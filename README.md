@@ -13,11 +13,11 @@ npm ci --ignore-scripts
 npm start
 ```
 
-Windows 也可下载 Release 源码 ZIP，解压后双击 `start.bat`。Linux/macOS 使用上述命令启动。运行时需要本机网络能够访问 AWS HTTPS API。GitHub Pages 无法运行本工具的 Node.js 服务端。
+Windows 也可下载 Release 源码 ZIP，完整解压后双击 `启动工具.bat`，浏览器会自动打开。更新后双击 `重启工具.bat`，确认提示后自动重启并打开页面；无需手动结束进程或输入命令。英文入口 `start.bat`、`restart.bat` 功能相同。重复启动会打开已有服务，脚本会记住上次成功使用的端口。Linux/macOS 使用上述命令启动。运行时需要本机网络能够访问 AWS HTTPS API。GitHub Pages 无法运行本工具的 Node.js 服务端。
 
-需要 Node.js 22 或更新版本。Windows 双击 `start.bat`，首次启动安装锁定依赖；也可在此目录执行 `npm ci --ignore-scripts`、`npm start`。
+重启会中断执行中任务、清空连接和任务记录，请等待任务结束后操作；已提交的 CloudFront 失效不会撤销。启动窗口可关闭，服务在后台运行。首次启动若默认端口被旧版本或其他程序占用，会自动选择空闲端口并记住地址，不会关闭旧服务。后续重启仅针对由此目录启动且身份匹配的服务。启动失败时查看工具目录中的 `tool.stderr.log`。
 
-打开 http://127.0.0.1:8787 。端口占用会报错；PowerShell 可执行 `$env:PORT=8788; npm start` 修改端口。仅监听 127.0.0.1，必须使用此地址访问。停止服务按 Ctrl+C。更新源码后需停止并重新启动服务，再刷新浏览器；重启会清除连接会话。
+默认地址为 http://127.0.0.1:8787 ，Windows 启动入口以实际自动打开的地址为准。仅监听 127.0.0.1。高级用法：通过环境变量 `PORT` 指定端口；显式指定的端口被占用时会报错。通过 `npm start` 在终端启动的服务使用 Ctrl+C 停止；更新后重新运行该命令。双击启动的服务使用 `重启工具.bat` 更新。
 
 ## 使用
 
