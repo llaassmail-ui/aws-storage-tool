@@ -1,0 +1,17 @@
+{
+  "name": "aws-storage-tool",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local S3 file manager and CloudFront invalidation tool",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1151.0",
+    "@aws-sdk/client-cloudfront": "3.1151.0",
+    "@aws-sdk/lib-storage": "3.1151.0",
+    "@smithy/node-http-handler": "^4.0.0",
+    "lucide": "^0.468.0"
+  }
+}
