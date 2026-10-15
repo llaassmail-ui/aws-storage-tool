@@ -148,6 +148,10 @@ export class AWS {
   invalidate(id, paths, reference) {
     return this.send(this.cf, new CF.CreateInvalidationCommand({ DistributionId: id, InvalidationBatch: { CallerReference: reference, Paths: { Quantity: paths.length, Items: paths } } }));
   }
+  async distributionConfig(id) {
+    const result = await this.send(this.cf, new CF.GetDistributionConfigCommand({ Id: id }));
+    return result.DistributionConfig;
+  }
   invalidation(id, request) { return this.send(this.cf, new CF.GetInvalidationCommand({ DistributionId: id, Id: request })); }
   async close() {
     this.controller.abort();

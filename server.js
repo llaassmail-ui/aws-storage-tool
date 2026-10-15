@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { AWS, errorInfo, matchDistributions, invalidationPaths } from './aws.js';
 import { newJob, publicJob, runBatch, validateSelection, validateTargets } from './jobs.js';
 import { pathToFileURL } from 'node:url';
+import { locateURL } from './locator.js';
 
 export function createServer(factory = credentials => new AWS(credentials)) {
   const sessions = new Map();
@@ -25,7 +26,8 @@ export function createServer(factory = credentials => new AWS(credentials)) {
         res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` }); return res.end(data);
       }
       if (req.method !== 'GET' && req.headers.origin !== `http://${expected}`) return json(res, 403, { error: { message: '缺少同源 Origin' } });
-      const sid = /(?:^|; )aws_session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
+      const cookieName = `aws_session_${server.address().port}`;
+      const sid = new RegExp(`(?:^|; )${cookieName}=([^;]+)`).exec(req.headers.cookie || '')?.[1];
       if (route === '/api/connect' && req.method === 'POST') {
         const b = await body(req);
         if (!b.accessKeyId?.trim() || !b.secretAccessKey?.trim()) throw new Error('请输入 Access Key 和 Secret Key');
@@ -35,15 +37,19 @@ export function createServer(factory = credentials => new AWS(credentials)) {
         for (const [name, fn] of [['s3', () => session.aws.buckets()], ['cf', () => session.aws.distributionList()]]) {
           Promise.resolve().then(fn).then(data => { session.checks[name] = { state: 'available' }; if (name === 's3') session.buckets = data; }).catch(e => { session.checks[name] = { state: /AccessDenied|Unauthorized/.test(e.name) ? 'denied' : 'failed', error: errorInfo(e, name) }; });
         }
-        res.setHeader('Set-Cookie', `aws_session=${id}; HttpOnly; SameSite=Strict; Path=/`); return json(res, 200, { connected: true });
+        res.setHeader('Set-Cookie', `${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/`); return json(res, 200, { connected: true });
       }
       const s = sessions.get(sid); if (!s) return json(res, 401, { error: { message: '请先连接 AWS' } });
       if (route === '/api/session' && req.method === 'GET') return json(res, 200, { checks: s.checks, buckets: s.buckets });
       if (route === '/api/disconnect' && req.method === 'POST') {
         s.jobs.forEach(j => j.controller.abort()); await s.aws.close(); sessions.delete(sid);
-        res.setHeader('Set-Cookie', 'aws_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {});
+        res.setHeader('Set-Cookie', `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`); return json(res, 200, {});
       }
       if (route === '/api/objects' && req.method === 'GET') return json(res, 200, await s.aws.list(url.searchParams.get('bucket'), url.searchParams.get('prefix') || '', url.searchParams.get('token') || undefined, url.searchParams.get('region') || undefined));
+      if (route === '/api/locate' && req.method === 'POST') {
+        const b = await body(req);
+        return json(res, 200, await locateURL(s.aws, b.url));
+      }
       if (route === '/api/folders' && req.method === 'POST') {
         const b = await body(req);
         if (!b.bucket || typeof b.key !== 'string') throw new Error('文件夹参数无效');

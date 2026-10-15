@@ -54,12 +54,47 @@ $('disconnect').onclick = guarded(async () => {
   state.connected = false; await api('disconnect', 'POST'); location.reload();
 });
 $('bucketSearch').oninput = renderBuckets;
-$('back').onclick = () => { $('bucketView').hidden = false; $('fileView').hidden = true; };
+let browseSequence = 0;
+let located;
+$('locateForm').onsubmit = guarded(async e => {
+  e.preventDefault(); const button = $('locateButton'); button.disabled = true;
+  $('locateResults').replaceChildren(); notice('正在查找域名、路径规则和 S3 源…');
+  try {
+    const result = await api('locate', 'POST', { url: $('resourceUrl').value });
+    for (const issue of result.issues) node('p', formatError({ ...issue, operation: issue.distribution, object: issue.origin }), $('locateResults'));
+    for (const item of result.items) {
+      const row = node('div', undefined, $('locateResults')); row.className = 'locateResult';
+      node('strong', `s3://${item.bucket}/${item.key}`, row);
+      node('small', [item.distribution && `分配 ${item.distribution}（${item.enabled ? '启用' : '禁用'}）`, item.behavior, item.origin && `源 ${item.origin}`, item.originDomain].filter(Boolean).join(' · '), row);
+      for (const warning of item.warnings) node('p', warning, row);
+      const open = node('button', '打开 S3 目录', row); open.type = 'button';
+      open.onclick = guarded(async () => {
+        open.disabled = true;
+        try {
+          state.bucket = item.bucket; state.prefix = item.prefix; located = item;
+          $('region').value = ''; $('bucketView').hidden = true; $('fileView').hidden = false; tab('s3');
+          if (!await browse()) return;
+          while (!item.folder && !state.items.some(x => x.key === item.key) && state.next) {
+            notice('正在后续分页中查找目标文件…');
+            if (!await browse(true)) return;
+          }
+          if (state.bucket !== item.bucket || state.prefix !== item.prefix) return;
+          const found = state.items.some(x => x.key === item.key);
+          notice(item.folder ? `已打开目录：s3://${item.bucket}/${item.prefix}` : found ? `已定位文件：${item.key}` : `已打开父目录，但未找到文件：${item.key}。请核对路径改写、网站索引或对象是否存在。`);
+          $('objects').querySelector('.located')?.scrollIntoView({ block: 'nearest' });
+        } finally { open.disabled = false; }
+      });
+    }
+    notice(result.items.length ? `找到 ${result.items.length} 个候选路径，请核对后打开。` : '未能定位到 S3，请查看上方原因。');
+  } finally { button.disabled = false; }
+});
+$('back').onclick = () => { browseSequence++; $('bucketView').hidden = false; $('fileView').hidden = true; };
 function selection() { $('selection').textContent = `${state.selected.size} 项已选`; for (const id of ['copy', 'move', 'delete']) $(id).disabled = !state.selected.size; }
 function renderFiles() {
   $('objects').replaceChildren();
   for (const item of state.items) {
     const row = node('tr', undefined, $('objects')); const cell = node('td', undefined, row); const check = node('input', undefined, cell); check.type = 'checkbox'; check.setAttribute('aria-label', item.key); check.checked = state.selected.has(item.key);
+    if (located?.bucket === state.bucket && located.key === item.key) { row.className = 'located'; row.setAttribute('aria-label', '链接定位的文件'); }
     check.onchange = () => { check.checked ? state.selected.set(item.key, item) : state.selected.delete(item.key); selection(); };
     const name = node('td', undefined, row); const button = node('button', `${item.folder ? '▸ ' : ''}${item.key.slice(state.prefix.length)}`, name);
     button.onclick = item.folder ? guarded(async () => { state.prefix = item.key; await browse(); }) : () => { check.click(); };
@@ -68,15 +103,22 @@ function renderFiles() {
   selection();
 }
 async function browse(append = false) {
+  const sequence = ++browseSequence;
+  if (!append) {
+    state.items = []; state.selected.clear(); state.next = null;
+    $('selectAll').checked = false; $('more').hidden = true; $('crumbs').replaceChildren(); renderFiles();
+  }
   notice('正在加载目录…');
   const query = new URLSearchParams({ bucket: state.bucket, prefix: state.prefix, region: $('region').value }); if (append && state.next) query.set('token', state.next);
-  const r = await api(`objects?${query}`); $('region').value = r.region; state.next = r.token;
+  const r = await api(`objects?${query}`); if (sequence !== browseSequence) return false;
+  $('region').value = r.region; state.next = r.token;
   if (!append) { state.items = []; state.selected.clear(); $('selectAll').checked = false; }
   state.items.push(...r.folders, ...r.files.filter(f => f.key !== state.prefix).map(f => ({ ...f, folder: false })));
   $('more').hidden = !r.token; renderFiles(); $('crumbs').replaceChildren();
   const root = node('button', state.bucket, $('crumbs')); root.onclick = guarded(async () => { state.prefix = ''; await browse(); });
   let prefix = ''; for (const part of state.prefix.split('/').filter(Boolean)) { prefix += `${part}/`; const value = prefix; const b = node('button', part, $('crumbs')); b.onclick = guarded(async () => { state.prefix = value; await browse(); }); }
   notice();
+  return true;
 }
 $('refresh').onclick = guarded(() => browse()); $('more').onclick = guarded(() => browse(true)); $('region').onchange = guarded(() => browse());
 $('selectAll').onchange = () => { state.selected.clear(); if ($('selectAll').checked) state.items.forEach(i => state.selected.set(i.key, i)); renderFiles(); };
